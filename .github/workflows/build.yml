@@ -29,16 +29,26 @@ jobs:
 
       - name: Create project and build APK
         shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -o pipefail
           {
             set -e
-            NAME=$(jq -r '.appName // "My App"' src/app.json)
+            J=$GITHUB_WORKSPACE/src/app.json
+            NAME=$(jq -r '.appName // "My App"' "$J")
+            APP_ID=$(jq -r '.appId // "com.aibuilder.app"' "$J")
+            VERSION=$(jq -r '(.version // 1) | tonumber' "$J")
+            SPLASH_COLOR=$(jq -r '.splashColor // "#FFFFFF"' "$J")
+            SPLASH_ON=$(jq -r '.splash // false' "$J")
+            echo "App: $NAME | id: $APP_ID | version: $VERSION"
             flutter --version
             flutter create --org com.aibuilder --project-name app --platforms android build_app
             rm -rf build_app/lib
             cp -r src/lib build_app/lib
-            [ -d src/assets ] && cp -r src/assets build_app/assets || true
             cd build_app
             if [ -s ../src/deps.txt ]; then
               while IFS= read -r d || [ -n "$d" ]; do
@@ -46,6 +56,8 @@ jobs:
                 [ -n "$d" ] && flutter pub add "$d"
               done < ../src/deps.txt
             fi
+
+            # app name + permissions
             M=android/app/src/main/AndroidManifest.xml
             SAFE_NAME=$(printf '%s' "$NAME" | sed 's/[&|"<>\\]/ /g')
             sed -i "s|android:label=\"app\"|android:label=\"$SAFE_NAME\"|" "$M"
@@ -55,8 +67,55 @@ jobs:
                 [ -n "$p" ] && sed -i "s|<application|<uses-permission android:name=\"$p\"/>\n    <application|" "$M"
               done < ../src/permissions.txt
             fi
+
+            # unique application id: same id across versions => new versions install as updates
+            G=android/app/build.gradle.kts
+            grep -q 'applicationId = "com.aibuilder.app"' "$G" || { echo "applicationId line not found"; exit 1; }
+            sed -i "s|applicationId = \"com.aibuilder.app\"|applicationId = \"$APP_ID\"|" "$G"
+
+            # fixed release signing key (stored in repo secrets)
+            if [ -n "$KEYSTORE_B64" ]; then
+              echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+              python3 "$GITHUB_WORKSPACE/.github/scripts/patch_signing.py"
+            else
+              echo "WARNING: KEYSTORE_B64 secret missing - using debug key"
+            fi
+
+            # optional launcher icon
+            if [ -s ../src/icon.b64 ]; then
+              mkdir -p assets/branding
+              base64 -d ../src/icon.b64 > assets/branding/icon.png
+              flutter pub add dev:flutter_launcher_icons
+              printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets/branding/icon.png"\n  min_sdk_android: 21\n' > flutter_launcher_icons.yaml
+              dart run flutter_launcher_icons
+            fi
+
+            # optional splash screen (image and/or background color)
+            if [ -s ../src/splash.b64 ] || [ "$SPLASH_ON" = "true" ]; then
+              flutter pub add dev:flutter_native_splash
+              HAS_IMG=0
+              if [ -s ../src/splash.b64 ]; then
+                mkdir -p assets/branding
+                base64 -d ../src/splash.b64 > assets/branding/splash.png
+                HAS_IMG=1
+              fi
+              {
+                echo "flutter_native_splash:"
+                echo "  color: \"$SPLASH_COLOR\""
+                echo "  android: true"
+                echo "  ios: false"
+                echo "  web: false"
+                [ $HAS_IMG = 1 ] && echo "  image: assets/branding/splash.png"
+                echo "  android_12:"
+                echo "    color: \"$SPLASH_COLOR\""
+                [ $HAS_IMG = 1 ] && echo "    image: assets/branding/splash.png"
+                true
+              } > flutter_native_splash.yaml
+              dart run flutter_native_splash:create
+            fi
+
             flutter pub get
-            flutter build apk --release --target-platform android-arm64
+            flutter build apk --release --target-platform android-arm64 --build-number=$VERSION --build-name=1.0.$VERSION
           } 2>&1 | tee build.log
 
       - name: Upload APK
@@ -79,7 +138,7 @@ jobs:
           NAME=$(jq -r '(.appName // "My App") + (if ((.version // 1) | tonumber) > 1 then " — الإصدار \(.version)" else "" end)' src/app.json)
           jq -r '(.summary // "") + "\n\n---\n" + (.description // "") + (if (.history // "") != "" then "\n\nسجل التعديلات:\n" + .history else "" end)' src/app.json > notes.md
           cp build_app/build/app/outputs/flutter-apk/app-release.apk "app-${TAG}.apk"
-          (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
+          (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' 'android/app/upload-keystore.jks' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
           gh release create "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$NAME" --notes-file notes.md \
           || gh release upload "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" --repo "$GITHUB_REPOSITORY" --clobber
