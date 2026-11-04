@@ -1,0 +1,6 @@
+geolocator
+http
+flutter_compass
+intl
+provider
+vector_math
