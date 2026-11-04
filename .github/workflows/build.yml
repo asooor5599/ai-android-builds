@@ -76,8 +76,8 @@ jobs:
         run: |
           set -e
           TAG="build-${GITHUB_REF_NAME#app/}"
-          NAME=$(jq -r '.appName // "My App"' src/app.json)
-          jq -r '(.summary // "") + "\n\n---\n" + (.description // "")' src/app.json > notes.md
+          NAME=$(jq -r '(.appName // "My App") + (if ((.version // 1) | tonumber) > 1 then " — الإصدار \(.version)" else "" end)' src/app.json)
+          jq -r '(.summary // "") + "\n\n---\n" + (.description // "") + (if (.history // "") != "" then "\n\nسجل التعديلات:\n" + .history else "" end)' src/app.json > notes.md
           cp build_app/build/app/outputs/flutter-apk/app-release.apk "app-${TAG}.apk"
           (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
           gh release create "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" \
