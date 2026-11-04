@@ -50,6 +50,8 @@ jobs:
             rm -rf build_app/lib
             cp -r src/lib build_app/lib
             cd build_app
+            # SDK packages (not on pub.dev) used by the generated code
+            if grep -rqs "package:flutter_localizations/" lib; then flutter pub add flutter_localizations --sdk=flutter; fi
             if [ -s ../src/deps.txt ]; then
               while IFS= read -r d || [ -n "$d" ]; do
                 d=$(echo "$d" | tr -d '\r' | xargs)
