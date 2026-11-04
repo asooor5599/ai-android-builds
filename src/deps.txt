@@ -1,0 +1,3 @@
+shared_preferences
+provider
+google_fonts
