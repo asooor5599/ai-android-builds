@@ -54,7 +54,7 @@ jobs:
               done < ../src/permissions.txt
             fi
             flutter pub get
-            flutter build apk --release
+            flutter build apk --release --target-platform android-arm64
           } 2>&1 | tee build.log
 
       - name: Upload APK
