@@ -1,0 +1,7 @@
+{
+  "appName": "Noor Prayer   Qibla",
+  "summary": "A professional Islamic app providing accurate prayer times based on your GPS location and a real-time Qibla compass.",
+  "version": 1,
+  "history": "",
+  "description": "Act as an Expert Senior Flutter Developer. I want you to write the complete code for an Islamic Android App that provides \"Prayer Times\" and \"Qibla Direction\". \n\nHere are the strict, critical requirements for this app:\n1. Location Permissions (CRITICAL): Upon startup, the app MUST explicitly request GPS location permissions from the user (handling 'granted', 'denied', and 'permanently denied' states gracefully). \n2. Real-time Coordinates: Once permission is granted, fetch the user's current latitude and longitude.\n3. Prayer Times: Use the user's coordinates to fetch accurate daily prayer times using a free REST API (e.g., the Aladhan API).\n4. Qibla Compass: Use the device's geolocation and compass sensors to accurately point to the Qibla (Mecca).\n5. UI/UX: Design a clean, modern, and beautiful Islamic-themed user interface to display the next prayer countdown, the 5 daily prayer times, and the compass.\n\nPlease provide:\n- The required dependencies for `pubspec.yaml` (like geolocator, permission_handler, http, flutter_compass).\n- The exact folder structure.\n- The complete, copy-pasteable Dart code for `main.dart` and any other necessary screens or service files.\nEnsure the code handles state management simply and cleanly."
+}

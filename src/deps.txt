@@ -1,0 +1,7 @@
+geolocator
+permission_handler
+http
+flutter_compass
+intl
+provider
+vector_math
