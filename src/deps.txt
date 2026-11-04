@@ -1,0 +1,4 @@
+intl
+shared_preferences
+provider
+flutter_localizations
