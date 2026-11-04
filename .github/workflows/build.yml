@@ -11,6 +11,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +66,23 @@ jobs:
           name: apk
           path: build_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 7
+
+      - name: Save to my apps (release with APK + source)
+        if: success()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="build-${GITHUB_REF_NAME#app/}"
+          NAME=$(jq -r '.appName // "My App"' src/app.json)
+          jq -r '(.summary // "") + "\n\n---\n" + (.description // "")' src/app.json > notes.md
+          cp build_app/build/app/outputs/flutter-apk/app-release.apk "app-${TAG}.apk"
+          (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
+          gh release create "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$NAME" --notes-file notes.md \
+          || gh release upload "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Upload build log
         if: always()
