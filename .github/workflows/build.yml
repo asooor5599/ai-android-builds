@@ -46,7 +46,7 @@ jobs:
             SPLASH_ON=$(jq -r '.splash // false' "$J")
             echo "App: $NAME | id: $APP_ID | version: $VERSION"
             flutter --version
-            flutter create --org com.aibuilder --project-name app --platforms android build_app
+            flutter create --org com.aibuilder --project-name app --platforms android,web build_app
             rm -rf build_app/lib
             cp -r src/lib build_app/lib
             cd build_app
@@ -101,7 +101,7 @@ jobs:
               mkdir -p assets/branding
               base64 -d ../src/icon.b64 > assets/branding/icon.png
               flutter pub add dev:flutter_launcher_icons
-              printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets/branding/icon.png"\n  min_sdk_android: 21\n' > flutter_launcher_icons.yaml
+              printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets/branding/icon.png"\n  min_sdk_android: 21\n  web:\n    generate: true\n    image_path: "assets/branding/icon.png"\n    background_color: "%s"\n    theme_color: "%s"\n' "$SPLASH_COLOR" "$SPLASH_COLOR" > flutter_launcher_icons.yaml
               dart run flutter_launcher_icons
             fi
 
@@ -119,7 +119,7 @@ jobs:
                 echo "  color: \"$SPLASH_COLOR\""
                 echo "  android: true"
                 echo "  ios: false"
-                echo "  web: false"
+                echo "  web: true"
                 [ $HAS_IMG = 1 ] && echo "  image: assets/branding/splash.png"
                 echo "  android_12:"
                 echo "    color: \"$SPLASH_COLOR\""
@@ -141,6 +141,47 @@ jobs:
           path: build_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 1
 
+      - name: Build iPhone web version
+        if: success()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -e
+          J=$GITHUB_WORKSPACE/src/app.json
+          [ "$(jq -r 'if .web == false then "false" else "true" end' "$J")" = true ] || { echo "web version disabled"; exit 0; }
+          APP_ID=$(jq -r '.appId // "com.aibuilder.app"' "$J")
+          TEL=$(jq -r 'if .telemetry == false then "false" else "true" end' "$J")
+          cd build_app
+          python3 "$GITHUB_WORKSPACE/.github/scripts/prepare_web.py" "$J" "$TEL"
+          flutter build web --release --base-href "/ai-apps-web/$APP_ID/" --pwa-strategy=none \
+            || flutter build web --release --base-href "/ai-apps-web/$APP_ID/"
+          rm -rf "$GITHUB_WORKSPACE/web_out" && cp -r build/web "$GITHUB_WORKSPACE/web_out"
+          touch "$GITHUB_WORKSPACE/web_ok"
+
+      - name: Publish iPhone web version
+        if: success()
+        continue-on-error: true
+        shell: bash
+        env:
+          WEB_DEPLOY_TOKEN: ${{ secrets.WEB_DEPLOY_TOKEN }}
+        run: |
+          set -e
+          [ -f web_ok ] || { echo "no web build"; exit 0; }
+          [ -n "$WEB_DEPLOY_TOKEN" ] || { echo "WEB_DEPLOY_TOKEN missing"; exit 0; }
+          OWNER=${GITHUB_REPOSITORY%%/*}
+          APP_ID=$(jq -r '.appId // "com.aibuilder.app"' src/app.json)
+          VERSION=$(jq -r '(.version // 1) | tonumber' src/app.json)
+          git clone --depth 1 "https://x-access-token:${WEB_DEPLOY_TOKEN}@github.com/$OWNER/ai-apps-web.git" pages
+          rm -rf "pages/$APP_ID" && mkdir -p "pages/$APP_ID" && cp -r web_out/. "pages/$APP_ID/"
+          cd pages
+          git config user.name "AI App Builder"
+          git config user.email "ai-app-builder@users.noreply.github.com"
+          git add -A
+          git commit -qm "Publish $APP_ID v$VERSION" || true
+          for i in 1 2 3 4; do git push -q && break; sleep 3; git pull -q --rebase; done
+          echo "https://$OWNER.github.io/ai-apps-web/$APP_ID/" > "$GITHUB_WORKSPACE/web_url"
+          echo "published: $(cat "$GITHUB_WORKSPACE/web_url")"
+
       - name: Save to my apps (release with APK + source)
         if: success()
         continue-on-error: true
@@ -154,7 +195,7 @@ jobs:
           jq -r '(.summary // "") + "\n\n---\n" + (.description // "")
             + (if (.history // "") != "" then "\n\nسجل التعديلات:\n" + .history else "" end)
             + (if (.discussion // "") != "" then "\n\nملخص النقاش:\n" + .discussion else "" end)
-            + "\n\n<!--aib " + ({appId: (.appId // ""), version: ((.version // 1) | tonumber), force: (.forceUpdate == true), updates: (.updateCheck != false), telemetry: (.telemetry != false)} | tojson) + "-->"' src/app.json > notes.md
+            + "\n\n<!--aib " + ({appId: (.appId // ""), version: ((.version // 1) | tonumber), force: (.forceUpdate == true), updates: (.updateCheck != false), telemetry: (.telemetry != false), web: $web} | tojson) + "-->"' --arg web "$(cat web_url 2>/dev/null || true)" src/app.json > notes.md
           cp build_app/build/app/outputs/flutter-apk/app-release.apk "app-${TAG}.apk"
           (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' 'android/app/upload-keystore.jks' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
           gh release create "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" \
