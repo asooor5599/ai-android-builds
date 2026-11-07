@@ -153,7 +153,7 @@ jobs:
           TEL=$(jq -r 'if .telemetry == false then "false" else "true" end' "$J")
           cd build_app
           python3 "$GITHUB_WORKSPACE/.github/scripts/prepare_web.py" "$J" "$TEL"
-          flutter build web --release --base-href "/ai-apps-web/$APP_ID/" --pwa-strategy=none \
+          flutter build web --release --base-href "/ai-apps-web/$APP_ID/" --no-web-resources-cdn \
             || flutter build web --release --base-href "/ai-apps-web/$APP_ID/"
           rm -rf "$GITHUB_WORKSPACE/web_out" && cp -r build/web "$GITHUB_WORKSPACE/web_out"
           touch "$GITHUB_WORKSPACE/web_ok"
