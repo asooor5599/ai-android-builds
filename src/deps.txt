@@ -1,0 +1,5 @@
+geolocator
+geocoding
+http
+intl
+shared_preferences

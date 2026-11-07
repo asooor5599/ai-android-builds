@@ -1,0 +1,17 @@
+{
+  "appName": "مؤذني",
+  "appId": "com.aibuilder.build_8971ee",
+  "summary": "تطبيق متكامل لمواقيت الصلاة يدعم اللغة العربية بالكامل، مع تحديد الموقع تلقائياً وعرض التاريخ الهجري وعد تنازلي للصلاة القادمة.",
+  "version": 1,
+  "history": "",
+  "discussion": "",
+  "telemetry": true,
+  "updateCheck": true,
+  "forceUpdate": false,
+  "web": true,
+  "pingUrl": "https://relevant-widely-turtle.ngrok-free.app/webhook/android-builder-ping",
+  "splash": false,
+  "splashColor": "#FFFFFF",
+  "hasIcon": false,
+  "description": "Build a Flutter prayer times application with full RTL support and an Arabic interface. 1. Core Functionality: Use 'geolocator' to fetch user coordinates and 'geocoding' to display the city name. Fetch prayer times and Hijri dates from the Aladhan API. 2. UI/Theme: Implement a design inspired by the 'Moazini' app using a dark green and gold color palette with Material 3. 3. Home Screen: Display the current city, both Hijri and Gregorian dates at the top. Feature a large circular countdown timer"
+}
