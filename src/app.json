@@ -1,0 +1,17 @@
+{
+  "appName": "المسبحة والأذكار",
+  "appId": "com.aibuilder.app_b8db4e",
+  "summary": "تطبيق إسلامي متكامل يحتوي على مسبحة إلكترونية ذكية ومجموعة واسعة من الأذكار اليومية مع حفظ تلقائي للعداد.",
+  "version": 1,
+  "history": "",
+  "discussion": "",
+  "telemetry": true,
+  "updateCheck": true,
+  "forceUpdate": false,
+  "web": true,
+  "pingUrl": "https://relevant-widely-turtle.ngrok-free.app/webhook/android-builder-ping",
+  "splash": false,
+  "splashColor": "#FFFFFF",
+  "hasIcon": false,
+  "description": "انشا لي تطبيق فيه مسبحة الكترونية وفيه ادعية واذكار"
+}
