@@ -83,6 +83,19 @@ jobs:
               echo "WARNING: KEYSTORE_B64 secret missing - using debug key"
             fi
 
+            # usage stats + in-app update notice (native, independent from the generated Dart code)
+            TELEMETRY=$(jq -r 'if .telemetry == false then "false" else "true" end' "$J")
+            UPDATES=$(jq -r 'if .updateCheck == false then "false" else "true" end' "$J")
+            PING_URL=$(jq -r '.pingUrl // ""' "$J")
+            if [[ "$PING_URL" =~ ^https://[A-Za-z0-9._/-]+$ ]] && { [ "$TELEMETRY" = true ] || [ "$UPDATES" = true ]; }; then
+              MA=$(find android/app/src/main -name MainActivity.kt | head -1)
+              [ -n "$MA" ] || { echo "MainActivity.kt not found"; exit 1; }
+              cp "$GITHUB_WORKSPACE/.github/scripts/MainActivity.kt.tpl" "$MA"
+              sed -e "s|__ENDPOINT__|$PING_URL|" -e "s|__APP_ID__|$APP_ID|" -e "s|__TELEMETRY__|$TELEMETRY|" -e "s|__UPDATES__|$UPDATES|" \
+                "$GITHUB_WORKSPACE/.github/scripts/AibAgent.kt.tpl" > "$(dirname "$MA")/AibAgent.kt"
+              echo "Agent added: telemetry=$TELEMETRY updates=$UPDATES"
+            fi
+
             # optional launcher icon
             if [ -s ../src/icon.b64 ]; then
               mkdir -p assets/branding
@@ -138,7 +151,10 @@ jobs:
           set -e
           TAG="build-${GITHUB_REF_NAME#app/}"
           NAME=$(jq -r '(.appName // "My App") + (if ((.version // 1) | tonumber) > 1 then " — الإصدار \(.version)" else "" end)' src/app.json)
-          jq -r '(.summary // "") + "\n\n---\n" + (.description // "") + (if (.history // "") != "" then "\n\nسجل التعديلات:\n" + .history else "" end)' src/app.json > notes.md
+          jq -r '(.summary // "") + "\n\n---\n" + (.description // "")
+            + (if (.history // "") != "" then "\n\nسجل التعديلات:\n" + .history else "" end)
+            + (if (.discussion // "") != "" then "\n\nملخص النقاش:\n" + .discussion else "" end)
+            + "\n\n<!--aib " + ({appId: (.appId // ""), version: ((.version // 1) | tonumber), force: (.forceUpdate == true), updates: (.updateCheck != false), telemetry: (.telemetry != false)} | tojson) + "-->"' src/app.json > notes.md
           cp build_app/build/app/outputs/flutter-apk/app-release.apk "app-${TAG}.apk"
           (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' 'android/app/upload-keystore.jks' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
           gh release create "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" \
