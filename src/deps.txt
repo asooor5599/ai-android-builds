@@ -1,0 +1,4 @@
+provider
+http
+audioplayers
+shared_preferences
