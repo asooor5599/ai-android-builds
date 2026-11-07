@@ -1,0 +1,17 @@
+{
+  "appName": "المسبحة والأذكار",
+  "appId": "com.aibuilder.app_b8db4e",
+  "summary": "تطبيق إسلامي متكامل يحتوي على مسبحة إلكترونية ذكية بأهداف مخصصة ومجموعة واسعة من الأذكار اليومية مع تتبع التقدم التلقائي والحفظ.",
+  "version": 2,
+  "history": "• الإصدار 2: - Modify `TasbihProvider` (lib/tasbih_provider.dart): Add an integer `_goal` (default 33) and a `setGoal(int)` method. Ensure `sessionCounter` logic interacts with the goal for progress calculation.\n- Modify `TasbihScreen` (lib/tasbih_screen.dart):\n    - Add a goal selector at the top (33, 100, ∞) using `SegmentedButton` or a custom `Row` of chips.\n    - Replace the static circle with a `Stack` co",
+  "discussion": "[الإصدار 2]\n- إضافة خاصية تحديد الهدف في المسبحة (33، 100، أو مفتوح) مع مؤشر تقدم دائري.\n- إضافة شريط تقدم علوي في شاشة الأذكار يوضح نسبة الإنجاز.\n- توسيع قاعدة البيانات لتشمل أذكار النوم والاستيقاظ والمسجد.\n- تحسين التفاعل بالاهتزاز (Haptic Feedback) عند الوصول للهدف.\n- تحسين التصميم البصري للقوائم والبطاقات.",
+  "telemetry": true,
+  "updateCheck": true,
+  "forceUpdate": false,
+  "web": true,
+  "pingUrl": "https://relevant-widely-turtle.ngrok-free.app/webhook/android-builder-ping",
+  "splash": true,
+  "splashColor": "#FFFFFF",
+  "hasIcon": false,
+  "description": "انشا لي تطبيق فيه مسبحة الكترونية وفيه ادعية واذكار"
+}
