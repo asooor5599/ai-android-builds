@@ -26,7 +26,7 @@ ping = app.get('pingUrl') or ''
 mp = 'web/manifest.json'
 m = json.load(open(mp, encoding='utf-8'))
 m.update({
-    'name': name, 'short_name': name[:12], 'description': (app.get('summary') or name)[:200],
+    'name': name, 'short_name': name if len(name) <= 12 else (name.split()[0][:12] if name.split() else name[:12]), 'description': (app.get('summary') or name)[:200],
     'start_url': '.', 'scope': '.', 'display': 'standalone', 'orientation': 'portrait',
     'background_color': color, 'theme_color': color, 'lang': 'ar', 'dir': 'rtl',
 })
@@ -37,7 +37,9 @@ ip = 'web/index.html'
 s = open(ip, encoding='utf-8').read()
 safe = html.escape(name, quote=True)
 s = re.sub(r'<title>.*?</title>', '<title>' + safe + '</title>', s, count=1, flags=re.S)
-s = re.sub(r'(<meta name="apple-mobile-web-app-title" content=")[^"]*(")', r'\g<1>' + safe.replace('\\', '') + r'\2', s, count=1)
+s = re.sub(r'(<meta name="apple-mobile-web-app-title" content=")[^"]*(")', lambda m: m.group(1) + safe + m.group(2), s, count=1)
+desc = html.escape((app.get('summary') or name)[:200], quote=True)
+s = re.sub(r'(<meta name="description" content=")[^"]*(")', lambda m: m.group(1) + desc + m.group(2), s, count=1)
 extra = ''
 if 'apple-mobile-web-app-capable' not in s:
     extra += '  <meta name="apple-mobile-web-app-capable" content="yes">\n'
