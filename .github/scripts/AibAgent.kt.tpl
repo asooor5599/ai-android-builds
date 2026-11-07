@@ -2,12 +2,15 @@ package com.aibuilder.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.widget.Toast
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -94,11 +97,30 @@ object AibAgent {
             .setCancelable(!force)
             .setPositiveButton("تحديث") { _, _ ->
                 dialogShown = false
-                try { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u.optString("url")))) } catch (e: Throwable) { }
+                download(activity, u)
             }
         if (!force) b.setNegativeButton("لاحقاً") { _, _ -> pendingUpdate = null }
         b.setOnDismissListener { if (!force) dialogShown = false }
         try { b.show() } catch (e: Throwable) { dialogShown = false }
+    }
+
+    private fun download(activity: Activity, u: JSONObject) {
+        val url = u.optString("url")
+        try {
+            val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val label = try { activity.applicationInfo.loadLabel(activity.packageManager).toString() } catch (e: Throwable) { "التطبيق" }
+            val req = DownloadManager.Request(Uri.parse(url))
+                .addRequestHeader("ngrok-skip-browser-warning", "1")
+                .setTitle("تحديث " + label)
+                .setDescription("الإصدار " + u.optString("vn", ""))
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "update-" + activity.packageName + "-" + u.optLong("vc", 0) + ".apk")
+            dm.enqueue(req)
+            Toast.makeText(activity, "جاري تنزيل التحديث… اضغط على الإشعار بعد انتهاء التنزيل لتثبيته", Toast.LENGTH_LONG).show()
+        } catch (e: Throwable) {
+            try { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (e2: Throwable) { }
+        }
     }
 
     private fun post(json: String): String? {
