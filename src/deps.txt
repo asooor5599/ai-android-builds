@@ -1,0 +1,4 @@
+provider
+shared_preferences
+intl
+http
