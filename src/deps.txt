@@ -1,0 +1,7 @@
+provider
+shared_preferences
+http
+audioplayers
+geolocator
+intl
+path_provider
