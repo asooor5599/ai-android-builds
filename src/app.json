@@ -1,0 +1,18 @@
+{
+  "appName": "سبحتي برو",
+  "appId": "com.aibuilder.app_8b4c43",
+  "summary": "تطبيق تسبيح إلكتروني متطور يتميز بواجهة خضراء مريحة، يتيح لك تتبع الأذكار الفردية مع عداد إجمالي شامل لجميع تسبيحاتك وحفظ تلقائي للتقدم.",
+  "version": 3,
+  "history": "• الإصدار 2: أضف عداد إجمالي لكل الأذكار أسفل الشاشة، وغيّر اسم التطبيق إلى «سبحتي»\n• الإصدار 3: تحديث الهوية فقط (الاسم / الأيقونة / السبلاش) بدون تغيير في الكود",
+  "discussion": "",
+  "telemetry": true,
+  "updateCheck": true,
+  "forceUpdate": false,
+  "web": true,
+  "aab": true,
+  "pingUrl": "https://relevant-widely-turtle.ngrok-free.app/webhook/android-builder-ping",
+  "splash": true,
+  "splashColor": "#1B5E20",
+  "hasIcon": true,
+  "description": "عداد تسبيح بسيط: زر كبير في المنتصف يزيد العداد مع اهتزاز خفيف، زر تصفير، اختيار الذكر (سبحان الله، الحمد لله، الله أكبر)، حفظ العدد تلقائياً. واجهة عربية بألوان خضراء هادئة."
+}
