@@ -141,6 +141,24 @@ jobs:
           path: build_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 1
 
+      - name: Build AAB for Google Play
+        if: success()
+        continue-on-error: true
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -e
+          J=$GITHUB_WORKSPACE/src/app.json
+          [ "$(jq -r '.aab == true' "$J")" = true ] || { echo "AAB not requested"; exit 0; }
+          VERSION=$(jq -r '(.version // 1) | tonumber' "$J")
+          cd build_app
+          flutter build appbundle --release --build-number=$VERSION --build-name=1.0.$VERSION
+          cp build/app/outputs/bundle/release/app-release.aab "$GITHUB_WORKSPACE/app-release.aab"
+          ls -la "$GITHUB_WORKSPACE/app-release.aab"
+
       - name: Build iPhone web version
         if: success()
         continue-on-error: true
@@ -198,9 +216,11 @@ jobs:
             + "\n\n<!--aib " + ({appId: (.appId // ""), version: ((.version // 1) | tonumber), force: (.forceUpdate == true), updates: (.updateCheck != false), telemetry: (.telemetry != false), web: $web} | tojson) + "-->"' --arg web "$(cat web_url 2>/dev/null || true)" src/app.json > notes.md
           cp build_app/build/app/outputs/flutter-apk/app-release.apk "app-${TAG}.apk"
           (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' 'android/app/upload-keystore.jks' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
-          gh release create "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" \
+          FILES=("app-${TAG}.apk" "source-${TAG}.zip")
+          if [ -f app-release.aab ]; then cp app-release.aab "app-${TAG}.aab"; FILES+=("app-${TAG}.aab"); fi
+          gh release create "$TAG" "${FILES[@]}" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$NAME" --notes-file notes.md \
-          || gh release upload "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" --repo "$GITHUB_REPOSITORY" --clobber
+          || gh release upload "$TAG" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Upload build log
         if: always()
