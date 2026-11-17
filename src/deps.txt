@@ -1,0 +1,7 @@
+just_audio
+just_audio_background
+flutter_local_notifications
+timezone
+shared_preferences
+provider
+intl
