@@ -1,0 +1,84 @@
+name: preview-web
+
+on:
+  push:
+    branches: ['preview/**']
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create project and build web preview
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            set -e
+            J=$GITHUB_WORKSPACE/src/app.json
+            SLUG=${GITHUB_REF_NAME#preview/}
+            SLUG=$(printf '%s' "$SLUG" | tr -c 'A-Za-z0-9_-' '-' | cut -c1-60)
+            echo "SLUG=$SLUG" >> "$GITHUB_ENV"
+            flutter create --org com.aibuilder --project-name app --platforms web build_app
+            rm -rf build_app/lib
+            cp -r src/lib build_app/lib
+            cd build_app
+            if grep -rqs "package:flutter_localizations/" lib; then flutter pub add flutter_localizations --sdk=flutter; fi
+            if [ -s ../src/deps.txt ]; then
+              while IFS= read -r d || [ -n "$d" ]; do
+                d=$(echo "$d" | tr -d '\r' | xargs)
+                case "$d" in flutter_local_notifications) d="flutter_local_notifications:^19.5.0";; esac
+                [ -n "$d" ] && flutter pub add "$d"
+              done < ../src/deps.txt
+            fi
+            python3 "$GITHUB_WORKSPACE/.github/scripts/prepare_web.py" "$J" false
+            flutter build web --release --base-href "/ai-apps-web/preview/$SLUG/" --no-web-resources-cdn \
+              || flutter build web --release --base-href "/ai-apps-web/preview/$SLUG/"
+            rm -rf "$GITHUB_WORKSPACE/web_out" && cp -r build/web "$GITHUB_WORKSPACE/web_out"
+          } 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Publish preview
+        shell: bash
+        env:
+          WEB_DEPLOY_TOKEN: ${{ secrets.WEB_DEPLOY_TOKEN }}
+        run: |
+          set -e
+          OWNER=${GITHUB_REPOSITORY%%/*}
+          git clone --depth 1 "https://x-access-token:${WEB_DEPLOY_TOKEN}@github.com/$OWNER/ai-apps-web.git" pages
+          mkdir -p pages/preview
+          rm -rf "pages/preview/$SLUG" && mkdir -p "pages/preview/$SLUG" && cp -r web_out/. "pages/preview/$SLUG/"
+          # keep previews for 3 days only
+          NOW=$(date +%s); IDX=pages/preview/index.txt; touch "$IDX"
+          grep -v "^$SLUG " "$IDX" > idx.tmp || true
+          echo "$SLUG $NOW" >> idx.tmp
+          : > "$IDX"
+          while read -r s t; do
+            [ -n "$s" ] || continue
+            if [ $((NOW - t)) -gt 259200 ]; then rm -rf "pages/preview/$s"; else echo "$s $t" >> "$IDX"; fi
+          done < idx.tmp
+          cd pages
+          git config user.name "AI App Builder"
+          git config user.email "ai-app-builder@users.noreply.github.com"
+          git add -A
+          git commit -qm "Preview $SLUG" || true
+          for i in 1 2 3 4; do git push -q && break; sleep 3; git pull -q --rebase; done
+          echo "preview: https://$OWNER.github.io/ai-apps-web/preview/$SLUG/"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 3
