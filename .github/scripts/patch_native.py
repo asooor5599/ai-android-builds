@@ -85,5 +85,13 @@ if audio:
         open(ma, 'w', encoding='utf-8').write(s2)
         print('MainActivity -> AudioServiceActivity:', ma, s2 != s)
 
+# newer plugin versions (and androidx.core) need compileSdk >= 37
+gp = 'android/app/build.gradle.kts'
+g = open(gp, encoding='utf-8').read()
+if 'maxOf(flutter.compileSdkVersion' not in g:
+    g, n = re.subn(r'compileSdk\s*=\s*flutter\.compileSdkVersion', 'compileSdk = maxOf(flutter.compileSdkVersion, 37)', g, count=1)
+    print('compileSdk >= 37:', bool(n))
+    open(gp, 'w', encoding='utf-8').write(g)
+
 open(MP, 'w', encoding='utf-8').write(m)
 print('native patch: notifications=%s media=%s' % (notif, audio))
