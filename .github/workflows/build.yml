@@ -55,6 +55,8 @@ jobs:
             if [ -s ../src/deps.txt ]; then
               while IFS= read -r d || [ -n "$d" ]; do
                 d=$(echo "$d" | tr -d '\r' | xargs)
+                # pin plugins to the API generation the AI writes reliably
+                case "$d" in flutter_local_notifications) d="flutter_local_notifications:^19.5.0";; esac
                 [ -n "$d" ] && flutter pub add "$d"
               done < ../src/deps.txt
             fi
