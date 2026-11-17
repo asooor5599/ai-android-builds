@@ -96,6 +96,9 @@ jobs:
               echo "Agent added: telemetry=$TELEMETRY updates=$UPDATES"
             fi
 
+            # native setup for plugins that need it (local notifications, media controls)
+            python3 "$GITHUB_WORKSPACE/.github/scripts/patch_native.py"
+
             # optional launcher icon
             if [ -s ../src/icon.b64 ]; then
               mkdir -p assets/branding
