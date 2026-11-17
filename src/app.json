@@ -1,0 +1,18 @@
+{
+  "appName": "حاسبة الخصومات",
+  "appId": "com.aibuilder.app_043696",
+  "summary": "تطبيق بسيط لحساب الخصومات والنسب المئوية مع سجل للعمليات السابقة وتصميم عصري باللون البنفسجي.",
+  "version": 1,
+  "history": "",
+  "discussion": "",
+  "telemetry": true,
+  "updateCheck": true,
+  "forceUpdate": false,
+  "web": true,
+  "aab": false,
+  "pingUrl": "https://desktop-j51ho0r.tailf48e7d.ts.net/webhook/android-builder-ping",
+  "splash": false,
+  "splashColor": "#FFFFFF",
+  "hasIcon": false,
+  "description": "آلة حاسبة للنسبة المئوية والخصومات: إدخال السعر ونسبة الخصم يعرض السعر بعد الخصم والمبلغ الموفّر، مع سجل لآخر 10 عمليات محفوظ. واجهة عربية بلون بنفسجي."
+}
