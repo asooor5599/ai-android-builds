@@ -1,0 +1,18 @@
+{
+  "appName": "كتالوج الهدف",
+  "appId": "com.aibuilder.logo_f0fff9",
+  "summary": "تطبيق متجر إكسسوارات الجوالات لعرض المنتجات، مسح الباركود، والتواصل المباشر عبر واتساب.",
+  "version": 1,
+  "history": "",
+  "discussion": "",
+  "telemetry": false,
+  "updateCheck": true,
+  "forceUpdate": false,
+  "web": true,
+  "aab": false,
+  "pingUrl": "https://127.0.0.1:5678/webhook/android-builder-ping",
+  "splash": false,
+  "splashColor": "#FFFFFF",
+  "hasIcon": false,
+  "description": "تطبيق «كتالوج الهدف» لمتجر إكسسوارات جوالات: الشاشة الرئيسية تعرض الشعار logo.png في الأعلى وقائمة منتجات من ملف products.json (الاسم والسعر بالريال). زر عائم «امسح باركود» يفتح الكاميرا ويقرأ QR/باركود ويعرض الرقم. زر «تواصل واتساب» يفتح واتساب على الرقم 966500000000. استخدم خط Tajawal لكل الواجهة. واجهة عربية بلون أخضر."
+}
