@@ -99,6 +99,8 @@ jobs:
             fi
 
             # native setup for plugins that need it (local notifications, media controls)
+            # Arabic fonts referenced in the code + files uploaded from the page
+            python3 "$GITHUB_WORKSPACE/.github/scripts/fonts_assets.py" "$GITHUB_WORKSPACE/src"
             python3 "$GITHUB_WORKSPACE/.github/scripts/patch_native.py"
 
             # optional launcher icon
@@ -135,6 +137,9 @@ jobs:
             fi
 
             flutter pub get
+            # installed versions (for the auto-fix) + fast compile check before the long Gradle build
+            python3 "$GITHUB_WORKSPACE/.github/scripts/versions.py" "$GITHUB_WORKSPACE/src/deps.txt" || true
+            flutter analyze --no-fatal-infos --no-fatal-warnings lib || { echo "##[error]Dart analysis found errors"; exit 1; }
             flutter build apk --release --target-platform android-arm64 --build-number=$VERSION --build-name=1.0.$VERSION
           } 2>&1 | tee build.log
 
