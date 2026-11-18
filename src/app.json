@@ -1,0 +1,20 @@
+{
+  "appName": "طيران الطائر",
+  "appId": "com.aibuilder.app_9fc268",
+  "summary": "لعبة بسيطة حيث تتحكم في طائر يحاول الطيران وتفادي الأعمدة الخضراء. المس الشاشة ليرتفع الطائر للأعلى، وحاول تحقيق أعلى نتيجة ممكنة دون الاصطدام بالأنابيب أو السقوط.",
+  "version": 1,
+  "history": "",
+  "discussion": "",
+  "telemetry": false,
+  "updateCheck": false,
+  "forceUpdate": false,
+  "web": true,
+  "aab": false,
+  "engine": "godot",
+  "orientation": "portrait",
+  "pingUrl": "https://127.0.0.1:5678/webhook/android-builder-ping",
+  "splash": false,
+  "splashColor": "#FFFFFF",
+  "hasIcon": false,
+  "description": "لعبة ثنائية الأبعاد بسيطة: طائر يطير عند لمس الشاشة ويتفادى أعمدة خضراء، عداد نقاط وأعلى نتيجة، شاشة بداية وخسارة."
+}
