@@ -1,0 +1,75 @@
+name: preview-game
+
+on:
+  push:
+    branches: ['preview/g-*']
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-4.4.1-v1
+
+      - name: Create project and build web preview
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            set -e
+            SLUG=${GITHUB_REF_NAME#preview/}
+            SLUG=$(printf '%s' "$SLUG" | tr -c 'A-Za-z0-9_-' '-' | cut -c1-60)
+            echo "SLUG=$SLUG" >> "$GITHUB_ENV"
+            bash .github/scripts/godot_setup.sh
+            GD=$(grep '^GD=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)
+            python3 .github/scripts/godot_prepare.py src game_build preview
+            cd game_build
+            bash "$GITHUB_WORKSPACE/.github/scripts/godot_check.sh" "$GD"
+            mkdir -p "$GITHUB_WORKSPACE/web_out"
+            "$GD" --headless --export-release "Web" "$GITHUB_WORKSPACE/web_out/index.html"
+            [ -s "$GITHUB_WORKSPACE/web_out/index.wasm" ] || { echo "error: web export failed"; exit 1; }
+          } 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Publish preview
+        shell: bash
+        env:
+          WEB_DEPLOY_TOKEN: ${{ secrets.WEB_DEPLOY_TOKEN }}
+        run: |
+          set -e
+          OWNER=${GITHUB_REPOSITORY%%/*}
+          git clone --depth 1 "https://x-access-token:${WEB_DEPLOY_TOKEN}@github.com/$OWNER/ai-apps-web.git" pages
+          mkdir -p pages/preview
+          rm -rf "pages/preview/$SLUG" && mkdir -p "pages/preview/$SLUG" && cp -r web_out/. "pages/preview/$SLUG/"
+          NOW=$(date +%s); IDX=pages/preview/index.txt; touch "$IDX"
+          grep -v "^$SLUG " "$IDX" > idx.tmp || true
+          echo "$SLUG $NOW" >> idx.tmp
+          : > "$IDX"
+          while read -r s t; do
+            [ -n "$s" ] || continue
+            if [ $((NOW - t)) -gt 259200 ]; then rm -rf "pages/preview/$s"; else echo "$s $t" >> "$IDX"; fi
+          done < idx.tmp
+          cd pages
+          git config user.name "AI App Builder"
+          git config user.email "ai-app-builder@users.noreply.github.com"
+          git add -A
+          git commit -qm "Preview $SLUG" || true
+          for i in 1 2 3 4; do git push -q && break; sleep 3; git pull -q --rebase; done
+          echo "preview: https://$OWNER.github.io/ai-apps-web/preview/$SLUG/"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 3
