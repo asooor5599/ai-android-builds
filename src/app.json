@@ -1,0 +1,18 @@
+{
+  "appName": "عداد التسبيح",
+  "appId": "com.aibuilder.tajawal_5b7a86",
+  "summary": "تطبيق عداد تسبيح إلكتروني بسيط بتصميم أنيق بلون أزرق مريح، خط Tajawal، دعم للوضع الليلي، التجميع الذكي، وسجل الأذكار اليومي.",
+  "version": 1,
+  "history": "",
+  "discussion": "",
+  "telemetry": false,
+  "updateCheck": true,
+  "forceUpdate": false,
+  "web": true,
+  "aab": false,
+  "pingUrl": "https://127.0.0.1:5678/webhook/android-builder-ping",
+  "splash": false,
+  "splashColor": "#FFFFFF",
+  "hasIcon": false,
+  "description": "عداد تسبيح بسيط بزر كبير وخط Tajawal، لون أزرق."
+}
