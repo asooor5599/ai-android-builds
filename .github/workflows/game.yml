@@ -1,0 +1,128 @@
+name: build-game
+
+on:
+  push:
+    branches: ['app/g-*']
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-4.4.1-v1
+
+      - name: Create project and build APK
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -o pipefail
+          {
+            set -e
+            bash .github/scripts/godot_setup.sh
+            GD=$(grep '^GD=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)
+            python3 .github/scripts/godot_prepare.py src game_build apk
+            cd game_build
+            bash "$GITHUB_WORKSPACE/.github/scripts/godot_check.sh" "$GD"
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$RUNNER_TEMP/release.keystore"
+            export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$KEY_ALIAS"
+            export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$KEYSTORE_PASSWORD"
+            mkdir -p "$GITHUB_WORKSPACE/out"
+            "$GD" --headless --export-release "Android" "$GITHUB_WORKSPACE/out/app-release.apk"
+            [ -s "$GITHUB_WORKSPACE/out/app-release.apk" ] || { echo "error: Android export failed"; echo "##[error]Android export failed"; exit 1; }
+            ls -la "$GITHUB_WORKSPACE/out"
+          } 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: out/app-release.apk
+          retention-days: 1
+
+      - name: Build iPhone web version
+        if: success()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -e
+          J=$GITHUB_WORKSPACE/src/app.json
+          [ "$(jq -r 'if .web == false then "false" else "true" end' "$J")" = true ] || { echo "web version disabled"; exit 0; }
+          GD=${GD:-$HOME/godot/Godot_v4.4.1-stable_linux.x86_64}
+          mkdir -p "$GITHUB_WORKSPACE/web_out"
+          cd game_build
+          "$GD" --headless --export-release "Web" "$GITHUB_WORKSPACE/web_out/index.html"
+          [ -s "$GITHUB_WORKSPACE/web_out/index.wasm" ] && touch "$GITHUB_WORKSPACE/web_ok"
+
+      - name: Publish iPhone web version
+        if: success()
+        continue-on-error: true
+        shell: bash
+        env:
+          WEB_DEPLOY_TOKEN: ${{ secrets.WEB_DEPLOY_TOKEN }}
+        run: |
+          set -e
+          [ -f web_ok ] || { echo "no web build"; exit 0; }
+          [ -n "$WEB_DEPLOY_TOKEN" ] || { echo "WEB_DEPLOY_TOKEN missing"; exit 0; }
+          OWNER=${GITHUB_REPOSITORY%%/*}
+          APP_ID=$(jq -r '.appId // "com.aibuilder.app"' src/app.json)
+          VERSION=$(jq -r '(.version // 1) | tonumber' src/app.json)
+          git clone --depth 1 "https://x-access-token:${WEB_DEPLOY_TOKEN}@github.com/$OWNER/ai-apps-web.git" pages
+          rm -rf "pages/$APP_ID" && mkdir -p "pages/$APP_ID" && cp -r web_out/. "pages/$APP_ID/"
+          cd pages
+          git config user.name "AI App Builder"
+          git config user.email "ai-app-builder@users.noreply.github.com"
+          git add -A
+          git commit -qm "Publish $APP_ID v$VERSION" || true
+          for i in 1 2 3 4; do git push -q && break; sleep 3; git pull -q --rebase; done
+          echo "https://$OWNER.github.io/ai-apps-web/$APP_ID/" > "$GITHUB_WORKSPACE/web_url"
+          echo "published: $(cat "$GITHUB_WORKSPACE/web_url")"
+
+      - name: Save to my apps (release with APK + source)
+        if: success()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="build-${GITHUB_REF_NAME#app/}"
+          NAME=$(jq -r '(.appName // "My Game") + (if ((.version // 1) | tonumber) > 1 then " — الإصدار \(.version)" else "" end)' src/app.json)
+          jq -r '(.summary // "") + "\n\n---\n" + (.description // "")
+            + (if (.history // "") != "" then "\n\nسجل التعديلات:\n" + .history else "" end)
+            + (if (.discussion // "") != "" then "\n\nملخص النقاش:\n" + .discussion else "" end)
+            + "\n\n<!--aib " + ({appId: (.appId // ""), version: ((.version // 1) | tonumber), force: false, updates: false, telemetry: false, engine: "godot", web: $web} | tojson) + "-->"' --arg web "$(cat web_url 2>/dev/null || true)" src/app.json > notes.md
+          cp out/app-release.apk "app-${TAG}.apk"
+          (cd game_build && zip -qr "../source-${TAG}.zip" . -x '.godot/*' 'export_presets.cfg')
+          gh release create "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$NAME" --notes-file notes.md \
+          || gh release upload "$TAG" "app-${TAG}.apk" "source-${TAG}.zip" --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 3
