@@ -42,6 +42,9 @@ jobs:
                 [ -n "$d" ] && flutter pub add "$d"
               done < ../src/deps.txt
             fi
+            python3 "$GITHUB_WORKSPACE/.github/scripts/fonts_assets.py" "$GITHUB_WORKSPACE/src"
+            python3 "$GITHUB_WORKSPACE/.github/scripts/versions.py" "$GITHUB_WORKSPACE/src/deps.txt" || true
+            flutter analyze --no-fatal-infos --no-fatal-warnings lib || { echo "##[error]Dart analysis found errors"; exit 1; }
             python3 "$GITHUB_WORKSPACE/.github/scripts/prepare_web.py" "$J" false
             flutter build web --release --base-href "/ai-apps-web/preview/$SLUG/" --no-web-resources-cdn \
               || flutter build web --release --base-href "/ai-apps-web/preview/$SLUG/"
