@@ -2,7 +2,7 @@ name: preview-web
 
 on:
   push:
-    branches: ['preview/**']
+    branches: ['preview/**', '!preview/g-*']
 
 concurrency:
   group: ${{ github.ref }}
