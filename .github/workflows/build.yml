@@ -2,7 +2,7 @@ name: build-apk
 
 on:
   push:
-    branches: ['app/**']
+    branches: ['app/**', '!app/g-*']
 
 concurrency:
   group: ${{ github.ref }}
