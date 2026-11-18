@@ -73,6 +73,29 @@ if os.path.exists(os.path.join(SRC, 'icon.b64')) and os.path.getsize(os.path.joi
 if app.get('splash') and os.path.exists(os.path.join(SRC, 'splash.b64')) and os.path.getsize(os.path.join(SRC, 'splash.b64')) > 100:
     open(os.path.join(DST, 'splash.png'), 'wb').write(base64.b64decode(open(os.path.join(SRC, 'splash.b64')).read()))
     splash = True
+if not icon:
+    # default icon: rounded tile in the theme color with a light "play" triangle
+    import struct
+    import zlib
+    N = 256
+    r0, g0, b0 = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    rows = []
+    for y in range(N):
+        row = bytearray()
+        for x in range(N):
+            inside_tri = 90 <= x <= 180 and abs(y - 128) <= (x - 90) * 0.0 + (180 - x) * 0.55
+            if inside_tri:
+                row += bytes((255, 255, 255, 255))
+            else:
+                row += bytes((r0, g0, b0, 255))
+        rows.append(b'\x00' + bytes(row))
+
+    def chunk(t, d):
+        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', N, N, 8, 6, 0, 0, 0)) + \
+        chunk(b'IDAT', zlib.compress(b''.join(rows), 9)) + chunk(b'IEND', b'')
+    open(os.path.join(DST, 'icon.png'), 'wb').write(png)
+    icon = True
 for f in sorted(glob.glob(os.path.join(SRC, 'assets_b64', '*.b64'))):
     n = os.path.basename(f)[:-4]
     if re.fullmatch(r'[A-Za-z0-9._-]{1,80}', n):
