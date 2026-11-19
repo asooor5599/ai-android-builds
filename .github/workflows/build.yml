@@ -239,3 +239,130 @@ jobs:
           name: build-log
           path: build.log
           retention-days: 3
+
+  ios:
+    needs: build
+    if: success()
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: iPhone app requested?
+        id: req
+        shell: bash
+        run: echo "on=$(jq -r 'if .ios == true then "true" else "false" end' src/app.json)" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        if: steps.req.outputs.on == 'true'
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build iPhone app (IPA)
+        if: steps.req.outputs.on == 'true'
+        shell: bash
+        env:
+          IOS_CERT_P12_B64: ${{ secrets.IOS_CERT_P12_B64 }}
+          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          IOS_PROFILE_B64: ${{ secrets.IOS_PROFILE_B64 }}
+        run: |
+          set -o pipefail
+          {
+            set -e
+            J=$GITHUB_WORKSPACE/src/app.json
+            VERSION=$(jq -r '(.version // 1) | tonumber' "$J")
+            SPLASH_COLOR=$(jq -r '.splashColor // "#FFFFFF"' "$J")
+            SPLASH_ON=$(jq -r 'if .splash == true then "true" else "false" end' "$J")
+            flutter create --org com.aibuilder --project-name app --platforms ios build_app
+            rm -rf build_app/lib && cp -r src/lib build_app/lib
+            cd build_app
+            if grep -rqs "package:flutter_localizations/" lib; then flutter pub add flutter_localizations --sdk=flutter; fi
+            if [ -s ../src/deps.txt ]; then
+              while IFS= read -r d || [ -n "$d" ]; do
+                d=$(echo "$d" | tr -d '\r' | xargs)
+                case "$d" in flutter_local_notifications) d="flutter_local_notifications:^19.5.0";; esac
+                [ -n "$d" ] && flutter pub add "$d"
+              done < ../src/deps.txt
+            fi
+            python3 "$GITHUB_WORKSPACE/.github/scripts/fonts_assets.py" "$GITHUB_WORKSPACE/src"
+            python3 "$GITHUB_WORKSPACE/.github/scripts/patch_ios.py" "$J"
+            if [ -s ../src/icon.b64 ]; then
+              mkdir -p assets/branding && base64 -d -i ../src/icon.b64 > assets/branding/icon.png
+              flutter pub add dev:flutter_launcher_icons
+              printf 'flutter_launcher_icons:\n  android: false\n  ios: true\n  remove_alpha_ios: true\n  background_color_ios: "%s"\n  image_path: "assets/branding/icon.png"\n' "$SPLASH_COLOR" > flutter_launcher_icons.yaml
+              dart run flutter_launcher_icons
+            fi
+            if [ -s ../src/splash.b64 ] || [ "$SPLASH_ON" = "true" ]; then
+              flutter pub add dev:flutter_native_splash
+              HAS_IMG=0
+              if [ -s ../src/splash.b64 ]; then mkdir -p assets/branding && base64 -d -i ../src/splash.b64 > assets/branding/splash.png; HAS_IMG=1; fi
+              { echo "flutter_native_splash:"; echo "  color: \"$SPLASH_COLOR\""; echo "  android: false"; echo "  ios: true"; echo "  web: false"
+                [ $HAS_IMG = 1 ] && echo "  image: assets/branding/splash.png"; true; } > flutter_native_splash.yaml
+              dart run flutter_native_splash:create
+            fi
+            flutter pub get
+            if [ -n "$IOS_CERT_P12_B64" ] && [ -n "$IOS_PROFILE_B64" ]; then
+              # signed build (Apple Developer certificate + provisioning profile saved as repo secrets)
+              KC="$RUNNER_TEMP/build.keychain"; KP=$(openssl rand -hex 12)
+              security create-keychain -p "$KP" "$KC"; security set-keychain-settings -lut 21600 "$KC"; security unlock-keychain -p "$KP" "$KC"
+              echo "$IOS_CERT_P12_B64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+              security import "$RUNNER_TEMP/cert.p12" -P "$IOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+              security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KC" > /dev/null
+              security list-keychain -d user -s "$KC" $(security list-keychains -d user | sed 's/"//g')
+              echo "$IOS_PROFILE_B64" | base64 -d > "$RUNNER_TEMP/p.mobileprovision"
+              security cms -D -i "$RUNNER_TEMP/p.mobileprovision" > "$RUNNER_TEMP/p.plist"
+              UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/p.plist")
+              TEAM=$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/p.plist")
+              PNAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/p.plist")
+              METHOD=$(/usr/libexec/PlistBuddy -c 'Print ProvisionsAllDevices' "$RUNNER_TEMP/p.plist" 2>/dev/null | grep -q true && echo enterprise || (/usr/libexec/PlistBuddy -c 'Print ProvisionedDevices' "$RUNNER_TEMP/p.plist" >/dev/null 2>&1 && echo ad-hoc || echo app-store))
+              mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles && cp "$RUNNER_TEMP/p.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
+              BID=$(python3 -c "import json,re;print(re.sub(r'[^A-Za-z0-9.-]','-',json.load(open('$J'))['appId']))")
+              cat > ExportOptions.plist <<EOT
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>$METHOD</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict><key>$BID</key><string>$PNAME</string></dict>
+          </dict></plist>
+          EOT
+              sed -i '' -e "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = $TEAM; PROVISIONING_PROFILE_SPECIFIER = \"$PNAME\"; CODE_SIGN_IDENTITY = \"Apple Distribution\";/" ios/Runner.xcodeproj/project.pbxproj || true
+              flutter build ipa --release --build-number=$VERSION --build-name=1.0.$VERSION --export-options-plist=ExportOptions.plist
+              cp build/ios/ipa/*.ipa "$GITHUB_WORKSPACE/app.ipa"
+              echo "signed" > "$GITHUB_WORKSPACE/ipa_kind"
+            else
+              # unsigned build: install with Sideloadly / AltStore (they sign it with your Apple ID)
+              flutter build ios --release --no-codesign --build-number=$VERSION --build-name=1.0.$VERSION
+              rm -rf Payload && mkdir Payload && cp -R build/ios/iphoneos/Runner.app Payload/
+              zip -qry "$GITHUB_WORKSPACE/app.ipa" Payload
+              echo "unsigned" > "$GITHUB_WORKSPACE/ipa_kind"
+            fi
+            ls -la "$GITHUB_WORKSPACE/app.ipa"
+          } 2>&1 | tee "$GITHUB_WORKSPACE/ios.log"
+
+      - name: Attach IPA to my apps
+        if: steps.req.outputs.on == 'true' && success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${GITHUB_REF_NAME#app/}"
+          KIND=$(cat ipa_kind 2>/dev/null || echo unsigned)
+          F="app-${TAG}-ios-${KIND}.ipa"
+          cp app.ipa "$F"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            gh release upload "$TAG" "$F" --repo "$GITHUB_REPOSITORY" --clobber && break
+            sleep 20
+          done
+
+      - name: Upload iOS log
+        if: always() && steps.req.outputs.on == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-log
+          path: ios.log
+          retention-days: 3
