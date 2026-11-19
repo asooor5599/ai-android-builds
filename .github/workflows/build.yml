@@ -34,6 +34,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
         run: |
           set -o pipefail
           {
@@ -102,6 +103,16 @@ jobs:
             # Arabic fonts referenced in the code + files uploaded from the page
             python3 "$GITHUB_WORKSPACE/.github/scripts/fonts_assets.py" "$GITHUB_WORKSPACE/src"
             python3 "$GITHUB_WORKSPACE/.github/scripts/patch_native.py"
+
+            # server push notifications (Firebase Cloud Messaging) when requested and Firebase is set up
+            if [ "$(jq -r 'if .push == true then "true" else "false" end' "$J")" = true ]; then
+              pip3 install --quiet pyjwt cryptography requests 2>/dev/null || pip3 install --quiet --break-system-packages pyjwt cryptography requests
+              if python3 "$GITHUB_WORKSPACE/.github/scripts/fcm_config.py" "$J"; then
+                python3 "$GITHUB_WORKSPACE/.github/scripts/patch_push.py" "$J"
+              else
+                echo "Firebase push skipped"
+              fi
+            fi
 
             # optional launcher icon
             if [ -s ../src/icon.b64 ]; then
@@ -223,7 +234,7 @@ jobs:
           jq -r '(.summary // "") + "\n\n---\n" + (.description // "")
             + (if (.history // "") != "" then "\n\nسجل التعديلات:\n" + .history else "" end)
             + (if (.discussion // "") != "" then "\n\nملخص النقاش:\n" + .discussion else "" end)
-            + "\n\n<!--aib " + ({appId: (.appId // ""), version: ((.version // 1) | tonumber), force: (.forceUpdate == true), updates: (.updateCheck != false), telemetry: (.telemetry != false), web: $web} | tojson) + "-->"' --arg web "$(cat web_url 2>/dev/null || true)" src/app.json > notes.md
+            + "\n\n<!--aib " + ({appId: (.appId // ""), version: ((.version // 1) | tonumber), force: (.forceUpdate == true), updates: (.updateCheck != false), telemetry: (.telemetry != false), push: (.push == true), web: $web} | tojson) + "-->"' --arg web "$(cat web_url 2>/dev/null || true)" src/app.json > notes.md
           cp build_app/build/app/outputs/flutter-apk/app-release.apk "app-${TAG}.apk"
           (cd build_app && zip -qr "../source-${TAG}.zip" . -x 'build/*' 'android/app/upload-keystore.jks' '.dart_tool/*' '.idea/*' 'android/.gradle/*' 'android/app/build/*' '*.iml' '.flutter-plugins*')
           FILES=("app-${TAG}.apk" "source-${TAG}.zip")
