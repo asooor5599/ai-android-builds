@@ -265,9 +265,13 @@ jobs:
         if: steps.req.outputs.on == 'true'
         shell: bash
         env:
-          IOS_CERT_P12_B64: ${{ secrets.IOS_CERT_P12_B64 }}
-          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
-          IOS_PROFILE_B64: ${{ secrets.IOS_PROFILE_B64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_DIST_CERT_ID: ${{ secrets.IOS_DIST_CERT_ID }}
+          IOS_DIST_P12_B64: ${{ secrets.IOS_DIST_P12_B64 }}
+          IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
         run: |
           set -o pipefail
           {
@@ -304,36 +308,62 @@ jobs:
               dart run flutter_native_splash:create
             fi
             flutter pub get
-            if [ -n "$IOS_CERT_P12_B64" ] && [ -n "$IOS_PROFILE_B64" ]; then
-              # signed build (Apple Developer certificate + provisioning profile saved as repo secrets)
+            if [ -n "$ASC_KEY_ID" ] && [ -n "$IOS_DIST_P12_B64" ] && [ -n "$APPLE_TEAM_ID" ]; then
+              # ---- signed build with the App Store Connect API key (everything automatic per app)
+              pip3 install --quiet --break-system-packages pyjwt cryptography requests 2>/dev/null || pip3 install --quiet pyjwt cryptography requests
+              BID=$(python3 -c "import json,re;print(re.sub(r'[^A-Za-z0-9.-]','-',json.load(open('$J'))['appId']))")
               KC="$RUNNER_TEMP/build.keychain"; KP=$(openssl rand -hex 12)
               security create-keychain -p "$KP" "$KC"; security set-keychain-settings -lut 21600 "$KC"; security unlock-keychain -p "$KP" "$KC"
-              echo "$IOS_CERT_P12_B64" | base64 -d > "$RUNNER_TEMP/cert.p12"
-              security import "$RUNNER_TEMP/cert.p12" -P "$IOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+              echo "$IOS_DIST_P12_B64" | base64 -d > "$RUNNER_TEMP/dist.p12"
+              security import "$RUNNER_TEMP/dist.p12" -P "$IOS_DIST_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC" > /dev/null
               security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KC" > /dev/null
               security list-keychain -d user -s "$KC" $(security list-keychains -d user | sed 's/"//g')
-              echo "$IOS_PROFILE_B64" | base64 -d > "$RUNNER_TEMP/p.mobileprovision"
-              security cms -D -i "$RUNNER_TEMP/p.mobileprovision" > "$RUNNER_TEMP/p.plist"
-              UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/p.plist")
-              TEAM=$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/p.plist")
-              PNAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/p.plist")
-              METHOD=$(/usr/libexec/PlistBuddy -c 'Print ProvisionsAllDevices' "$RUNNER_TEMP/p.plist" 2>/dev/null | grep -q true && echo enterprise || (/usr/libexec/PlistBuddy -c 'Print ProvisionedDevices' "$RUNNER_TEMP/p.plist" >/dev/null 2>&1 && echo ad-hoc || echo app-store))
-              mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles && cp "$RUNNER_TEMP/p.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
-              BID=$(python3 -c "import json,re;print(re.sub(r'[^A-Za-z0-9.-]','-',json.load(open('$J'))['appId']))")
-              cat > ExportOptions.plist <<EOT
+              PDIR=~/Library/MobileDevice/Provisioning\ Profiles; mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+              PNAME=$(python3 "$GITHUB_WORKSPACE/.github/scripts/asc.py" profile "$BID" "$(jq -r '.appName' "$J")" adhoc "$RUNNER_TEMP/adhoc.mobileprovision" | tail -1)
+              UUID=$(security cms -D -i "$RUNNER_TEMP/adhoc.mobileprovision" | plutil -extract UUID raw -)
+              cp "$RUNNER_TEMP/adhoc.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
+              # manual signing on the Runner target only (Pods stay unsigned)
+              python3 - "$BID" "$APPLE_TEAM_ID" "$PNAME" <<'PYX'
+          import re, sys
+          bid, team, pname = sys.argv[1:4]
+          p = 'ios/Runner.xcodeproj/project.pbxproj'
+          s = open(p).read()
+          s = s.replace('PRODUCT_BUNDLE_IDENTIFIER = %s;' % bid,
+              'PRODUCT_BUNDLE_IDENTIFIER = %s; CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = %s; PROVISIONING_PROFILE_SPECIFIER = "%s"; "CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";' % (bid, team, pname))
+          open(p, 'w').write(s)
+          PYX
+              opts() { cat > "$1" <<EOT
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
-            <key>method</key><string>$METHOD</string>
-            <key>teamID</key><string>$TEAM</string>
+            <key>method</key><string>$2</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
             <key>signingStyle</key><string>manual</string>
-            <key>provisioningProfiles</key><dict><key>$BID</key><string>$PNAME</string></dict>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict><key>$BID</key><string>$3</string></dict>
           </dict></plist>
           EOT
-              sed -i '' -e "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = $TEAM; PROVISIONING_PROFILE_SPECIFIER = \"$PNAME\"; CODE_SIGN_IDENTITY = \"Apple Distribution\";/" ios/Runner.xcodeproj/project.pbxproj || true
-              flutter build ipa --release --build-number=$VERSION --build-name=1.0.$VERSION --export-options-plist=ExportOptions.plist
+              }
+              opts ExportAdHoc.plist release-testing "$PNAME"
+              flutter build ipa --release --build-number=$VERSION --build-name=1.0.$VERSION --export-options-plist=ExportAdHoc.plist
               cp build/ios/ipa/*.ipa "$GITHUB_WORKSPACE/app.ipa"
-              echo "signed" > "$GITHUB_WORKSPACE/ipa_kind"
+              echo "adhoc" > "$GITHUB_WORKSPACE/ipa_kind"
+              echo "$BID" > "$GITHUB_WORKSPACE/ipa_bid"
+              # TestFlight: only when the app record exists in App Store Connect
+              if [ "$(python3 "$GITHUB_WORKSPACE/.github/scripts/asc.py" hasapp "$BID" | tail -1)" = "yes" ]; then
+                ( set -e
+                  ASN=$(python3 "$GITHUB_WORKSPACE/.github/scripts/asc.py" profile "$BID" "$(jq -r '.appName' "$J")" appstore "$RUNNER_TEMP/store.mobileprovision" | tail -1)
+                  U2=$(security cms -D -i "$RUNNER_TEMP/store.mobileprovision" | plutil -extract UUID raw -)
+                  cp "$RUNNER_TEMP/store.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/"$U2".mobileprovision
+                  opts ExportStore.plist app-store-connect "$ASN"
+                  xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/store -exportOptionsPlist ExportStore.plist
+                  mkdir -p ~/private_keys && printf '%s' "$ASC_KEY_P8" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+                  xcrun altool --upload-app -f build/store/*.ipa -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+                  echo "testflight" > "$GITHUB_WORKSPACE/ipa_testflight"
+                ) || echo "TestFlight upload skipped/failed (the ad-hoc IPA is still available)"
+              else
+                echo "No App Store Connect app for $BID — TestFlight upload skipped (create the app in App Store Connect to enable it)"
+              fi
             else
               # unsigned build: install with Sideloadly / AltStore (they sign it with your Apple ID)
               flutter build ios --release --no-codesign --build-number=$VERSION --build-name=1.0.$VERSION
@@ -349,11 +379,40 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          WEB_DEPLOY_TOKEN: ${{ secrets.WEB_DEPLOY_TOKEN }}
         run: |
           TAG="build-${GITHUB_REF_NAME#app/}"
           KIND=$(cat ipa_kind 2>/dev/null || echo unsigned)
           F="app-${TAG}-ios-${KIND}.ipa"
           cp app.ipa "$F"
+          if [ "$KIND" = "adhoc" ] && [ -n "$WEB_DEPLOY_TOKEN" ]; then
+            # over-the-air install page (registered iPhones only): itms-services manifest on GitHub Pages
+            OWNER=${GITHUB_REPOSITORY%%/*}
+            APP_ID=$(jq -r '.appId' src/app.json); BID=$(cat ipa_bid); VER=$(jq -r '(.version // 1) | tonumber' src/app.json)
+            NAME=$(jq -r '.appName // "App"' src/app.json)
+            BASE="https://$OWNER.github.io/ai-apps-web/ipa/$APP_ID"
+            git clone --depth 1 "https://x-access-token:${WEB_DEPLOY_TOKEN}@github.com/$OWNER/ai-apps-web.git" pages
+            mkdir -p "pages/ipa/$APP_ID" && cp app.ipa "pages/ipa/$APP_ID/app.ipa"
+            python3 - "$BASE" "$BID" "$VER" "$NAME" "pages/ipa/$APP_ID" <<'PYX'
+          import html, plistlib, sys
+          base, bid, ver, name, d = sys.argv[1:6]
+          plistlib.dump({'items': [{'assets': [{'kind': 'software-package', 'url': base + '/app.ipa'}],
+              'metadata': {'bundle-identifier': bid, 'bundle-version': '1.0.' + ver, 'kind': 'software', 'title': name}}]},
+              open(d + '/manifest.plist', 'wb'))
+          n = html.escape(name)
+          open(d + '/index.html', 'w', encoding='utf-8').write('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + n + '</title>'
+              '<body style="font-family:system-ui;background:#0b1220;color:#e5edf8;text-align:center;padding:40px 16px">'
+              '<h2>' + n + '</h2><p>الإصدار 1.0.' + ver + '</p>'
+              '<p><a style="display:inline-block;background:#10b981;color:#04130d;padding:14px 26px;border-radius:14px;font-weight:800;text-decoration:none" '
+              'href="itms-services://?action=download-manifest&url=' + base + '/manifest.plist">📲 تثبيت على الآيفون</a></p>'
+              '<p style="color:#8ea0bd;font-size:13px">افتح الصفحة من Safari على آيفون مسجّل. بعد التثبيت: الإعدادات ← عام ← VPN وإدارة الأجهزة إن طلب التوثيق.</p></body></html>')
+          PYX
+            cd pages && git config user.name "AI App Builder" && git config user.email "ai-app-builder@users.noreply.github.com"
+            git add -A && git commit -qm "IPA $APP_ID v$VER" || true
+            for i in 1 2 3 4; do git push -q && break; sleep 3; git pull -q --rebase; done
+            cd ..
+          fi
+          [ -f ipa_testflight ] && F2="app-${TAG}-ios-testflight.txt" && echo "uploaded to TestFlight" > "$F2" && gh release upload "$TAG" "$F2" --repo "$GITHUB_REPOSITORY" --clobber || true
           for i in 1 2 3 4 5 6 7 8 9 10; do
             gh release upload "$TAG" "$F" --repo "$GITHUB_REPOSITORY" --clobber && break
             sleep 20
