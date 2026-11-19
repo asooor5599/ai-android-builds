@@ -1,0 +1,29 @@
+name: apple-setup
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: apple-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apple signing setup
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_DEVICES: ${{ secrets.IOS_DEVICES }}
+          IOS_DIST_CERT_ID: ${{ secrets.IOS_DIST_CERT_ID }}
+          IOS_DIST_P12_B64: ${{ secrets.IOS_DIST_P12_B64 }}
+          GH_PAT: ${{ secrets.WEB_DEPLOY_TOKEN }}
+        run: |
+          pip install --quiet pyjwt cryptography requests pynacl
+          python3 .github/scripts/asc.py setup
