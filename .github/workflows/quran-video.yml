@@ -27,6 +27,7 @@ jobs:
       - name: Make video (still image + audio)
         run: |
           set -e
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg >/dev/null; }
           ffmpeg -nostdin -loglevel error -y -loop 1 -framerate 5 -i cover.jpg -i audio.mp3 \
             -c:v libx264 -preset veryfast -tune stillimage -crf 30 -pix_fmt yuv420p -r 5 \
             -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2" \
