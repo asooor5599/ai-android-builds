@@ -1,0 +1,44 @@
+name: quran-video
+run-name: quran ${{ inputs.rid }}
+on:
+  workflow_dispatch:
+    inputs:
+      audio: { description: 'رابط MP3 للسورة', required: true }
+      image: { description: 'رابط صورة الغلاف', required: true }
+      rid:   { description: 'معرّف الطلب من n8n', required: true }
+permissions:
+  contents: read
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Download audio and cover
+        env:
+          AUDIO: ${{ inputs.audio }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -e
+          case "$AUDIO" in https://*.mp3quran.net/*) ;; *) echo "::error::رابط الصوت غير مسموح"; exit 1;; esac
+          case "$IMAGE" in https://raw.githubusercontent.com/asooor5599/*) ;; *) echo "::error::رابط الصورة غير مسموح"; exit 1;; esac
+          curl -fsSL --retry 4 --retry-delay 5 -o audio.mp3 "$AUDIO"
+          curl -fsSL --retry 3 -o cover.jpg "$IMAGE"
+          ls -la audio.mp3 cover.jpg
+      - name: Make video (still image + audio)
+        run: |
+          set -e
+          ffmpeg -nostdin -loglevel error -y -loop 1 -framerate 5 -i cover.jpg -i audio.mp3 \
+            -c:v libx264 -preset veryfast -tune stillimage -crf 30 -pix_fmt yuv420p -r 5 \
+            -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2" \
+            -c:a aac -b:a 128k -shortest -movflags +faststart video.mp4
+          D=$(ffprobe -v error -show_entries format=duration -of csv=p=0 video.mp4)
+          echo "duration=$D" ; ls -la video.mp4
+          echo "{\"duration\": $D, \"size\": $(stat -c %s video.mp4)}" > info.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quran-${{ inputs.rid }}
+          path: |
+            video.mp4
+            info.json
+          retention-days: 1
+          compression-level: 0
