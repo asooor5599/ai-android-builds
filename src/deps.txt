@@ -1,0 +1,10 @@
+provider
+shared_preferences
+http
+just_audio
+just_audio_background
+audio_session
+geolocator
+intl
+path_provider
+flutter_local_notifications
