@@ -48,6 +48,21 @@ jobs:
           AIB_FONTS="$PWD/fonts" python3 .github/scripts/quran_long.py "$SPEC" "$PWD/out"
           rm -rf out/work
           ls -la out
+      - name: Preview on GitHub Pages (test runs without upload)
+        if: ${{ inputs.upload == '' }}
+        env:
+          TOKEN: ${{ secrets.WEB_DEPLOY_TOKEN }}
+          RID: ${{ inputs.rid }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, urllib.request
+          f = 'out/video.mp4'
+          if os.path.exists(f) and os.path.getsize(f) < 60e6:
+              req = urllib.request.Request('https://api.github.com/repos/asooor5599/ai-apps-web/contents/shorts/%s.mp4' % os.environ['RID'], method='PUT',
+                  data=json.dumps({'message': 'long preview', 'content': base64.b64encode(open(f, 'rb').read()).decode()}).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'})
+              print(urllib.request.urlopen(req, timeout=300).status)
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
