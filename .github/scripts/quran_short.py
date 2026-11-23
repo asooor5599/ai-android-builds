@@ -101,7 +101,10 @@ for a in ayahs:
     if a['n'] == 1 and S not in (1, 9) and ar.startswith(BASM[:5]):
         w = ar.split(' ')
         ar = ' '.join(w[4:]).strip() or ar
-    a['ar'], a['en'] = ar, tx['en'].strip()
+    en = tx['en'].strip()
+    while en.endswith(' -') or en.endswith('-') or en.endswith(' –'):
+        en = en.rstrip(' -–').strip()
+    a['ar'], a['en'] = ar, en
 
 # ---------------- 3) audio track (lead + ayahs + tail)
 lst = os.path.join(work, 'list.txt')
